@@ -9,6 +9,10 @@ const client = new Client({
 });
 
 const LOA_ROLE_ID = "1526363036229832735";
+const REMOVABLE_ROLES = [
+    "1526347305039433889",
+    "1526346933642330244"
+];
 
 const DATA_FILE = "./loaData.json";
 
