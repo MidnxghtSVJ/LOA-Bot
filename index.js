@@ -8,24 +8,40 @@ const client = new Client({
     ]
 });
 
+
+// ================= SETTINGS =================
+
+// LOA role
 const LOA_ROLE_ID = "1526363036229832735";
+
+
+// Roles removed while on LOA
+// Add your management/access roles here
 const REMOVABLE_ROLES = [
     "1526347305039433889",
     "1526346933642330244"
 ];
 
+
+// Data file
 const DATA_FILE = "./loaData.json";
 
-let savedNicknames = {};
+
+// ============================================
+
+
+// Load saved data
+let savedData = {};
 
 if (fs.existsSync(DATA_FILE)) {
-    savedNicknames = JSON.parse(fs.readFileSync(DATA_FILE));
+    savedData = JSON.parse(fs.readFileSync(DATA_FILE));
 }
+
 
 function saveData() {
     fs.writeFileSync(
         DATA_FILE,
-        JSON.stringify(savedNicknames, null, 4)
+        JSON.stringify(savedData, null, 4)
     );
 }
 
@@ -35,54 +51,150 @@ client.once('ready', () => {
 });
 
 
+
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     const hadLOA = oldMember.roles.cache.has(LOA_ROLE_ID);
     const hasLOA = newMember.roles.cache.has(LOA_ROLE_ID);
 
 
-    // LOA role added
+
+    // ============================
+    // LOA ADDED
+    // ============================
+
     if (!hadLOA && hasLOA) {
 
-        const oldNickname = newMember.nickname || newMember.user.username;
+        const oldNickname =
+            newMember.nickname ||
+            newMember.user.username;
 
-        console.log(`Saving nickname: ${oldNickname}`);
 
-        savedNicknames[newMember.id] = oldNickname;
+        const removedRoles = [];
+
+
+        // Save and remove access roles
+        for (const roleId of REMOVABLE_ROLES) {
+
+            if (newMember.roles.cache.has(roleId)) {
+
+                removedRoles.push(roleId);
+
+                try {
+                    await newMember.roles.remove(roleId);
+                }
+                catch (error) {
+                    console.log(
+                        `Could not remove role ${roleId}:`,
+                        error.message
+                    );
+                }
+            }
+        }
+
+
+
+        // Save data
+        savedData[newMember.id] = {
+            nickname: oldNickname,
+            roles: removedRoles
+        };
+
         saveData();
 
+
+
+        // Change nickname
         try {
-            await newMember.setNickname(`[LOA] ${oldNickname}`);
 
-            console.log(`${newMember.user.tag} is now on LOA`);
+            await newMember.setNickname(
+                `[LOA] ${oldNickname}`
+            );
 
-        } catch (error) {
-            console.log("Could not change nickname:", error);
+            console.log(
+                `${newMember.user.tag} is now on LOA`
+            );
+
+        }
+        catch (error) {
+
+            console.log(
+                "Could not change nickname:",
+                error.message
+            );
         }
     }
 
 
-    // LOA role removed
+
+
+    // ============================
+    // LOA REMOVED
+    // ============================
+
     if (hadLOA && !hasLOA) {
 
-        const oldNickname = savedNicknames[newMember.id];
 
-        if (oldNickname) {
+        const data = savedData[newMember.id];
+
+
+        if (!data) {
+            console.log(
+                "No saved LOA data found"
+            );
+            return;
+        }
+
+
+
+        // Restore nickname
+        try {
+
+            await newMember.setNickname(
+                data.nickname
+            );
+
+        }
+        catch (error) {
+
+            console.log(
+                "Could not restore nickname:",
+                error.message
+            );
+        }
+
+
+
+        // Restore roles
+        for (const roleId of data.roles) {
 
             try {
-                await newMember.setNickname(oldNickname);
 
-                delete savedNicknames[newMember.id];
-                saveData();
+                await newMember.roles.add(roleId);
 
-                console.log(`${newMember.user.tag} returned from LOA`);
+            }
+            catch (error) {
 
-            } catch (error) {
-                console.log("Could not restore nickname:", error);
+                console.log(
+                    `Could not restore role ${roleId}:`,
+                    error.message
+                );
             }
         }
+
+
+
+        delete savedData[newMember.id];
+        saveData();
+
+
+
+        console.log(
+            `${newMember.user.tag} returned from LOA`
+        );
     }
 
 });
 
 client.login(process.env.TOKEN);
+
